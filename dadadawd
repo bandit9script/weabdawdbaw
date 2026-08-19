@@ -3606,11 +3606,7 @@ end)
 
 -- =========================================================================
 -- [ SHOOT HOOK ]
-
 -- =========================================================================
--- [ SHOOT HOOK ]
--- =========================================================================
-
 local oldshoot
 pcall(function()
     if not SendFunc then return end
@@ -3631,17 +3627,22 @@ pcall(function()
                         elseif Toggles.SilentAim and Toggles.SilentAim.Value and SilentTarget then
                             targetPart = SilentTarget
                         end
+                        
+                        -- Сохраняем логику наводки сайлента/рэйджа
                         if targetPart then
                             hitData.Instance = targetPart
                             hitData.Position = targetPart.Position
                         end
+                        
                         pcall(function()
                             local cam = Workspace.CurrentCamera
                             if cam and hitData.Position then
                                 local startPos = cam.CFrame.Position
-                                local endPos = hitData.Position
+                                local endPos = hitData.Position -- Точная 3D позиция попадания для хитмаркера
+                                
                                 createTracerBean(startPos, endPos)
                                 createBulletImpact(endPos)
+                                
                                 local isEnemyHit = false
                                 if hitData.Instance then
                                     local ancestorModel = hitData.Instance:FindFirstAncestorOfClass("Model")
@@ -3654,9 +3655,17 @@ pcall(function()
                                         end
                                     end
                                 end
-                                if isEnemyHit then
+
+                                -- Срабатывает звук и 3D-хитмаркер в точке endPos
+                                if isEnemyHit or targetPart then
                                     PlayHitSound()
-                                    if TriggerHitMarkerEvent then TriggerHitMarkerEvent(endPos) end
+                                    
+                                    -- Вызываем твой 3D хитмаркер, передавая ему координаты точки попадания
+                                    if TriggerHitMarkerEvent then
+                                        pcall(function()
+                                            TriggerHitMarkerEvent(endPos)
+                                        end)
+                                    end
                                 end
                             end
                         end)
@@ -3667,7 +3676,6 @@ pcall(function()
         return oldshoot(unpack(args))
     end)
 end)
-
 -- =========================================================================
 -- [ FIRERATE LOOP ]
 -- =========================================================================
