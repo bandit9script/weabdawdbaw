@@ -4150,7 +4150,7 @@ local function VisualizeShrapnel(pos)
 end
 
 -- =========================================================================
--- [ ULTIMATE FORCED MESH CHAMS V19 - HARD DELETE TEXTURES & 100% OVERRIDE ]
+-- [ CHAMS V3 — VestDetails TeamCheck + Visible/Unvisible Highlight ]
 -- =========================================================================
 
 task.spawn(function()
@@ -4159,173 +4159,244 @@ task.spawn(function()
 
     local ChamsGroupbox = Tabs.Visuals:AddRightGroupbox("Chams")
 
-    ChamsGroupbox:AddToggle("ChamsEnabled", { Text = "Enabled", Default = false })
-    ChamsGroupbox:AddToggle("ChamsTeamCheck", { Text = "Team Check", Default = true })
+    ChamsGroupbox:AddToggle("ChamsEnabled",   { Text = "Enabled",    Default = false })
+    ChamsGroupbox:AddToggle("ChamsTeamCheck", { Text = "TeamCheck",  Default = true  })
 
-    ChamsGroupbox:AddSlider("ChamsAlpha", {
-        Text = "Highlight Transparency",
-        Default = 0.3,
-        Min = 0,
-        Max = 1,
+    ChamsGroupbox:AddDivider()
+
+    -- VISIBLE
+    ChamsGroupbox:AddLabel("Visible")
+    ChamsGroupbox:AddDropdown("ChamsMaterialVisible", {
+        Text    = "MaterialVisible",
+        Values  = {"Neon", "Metal", "ForceField", "SmoothPlastic"},
+        Default = "Neon",
+    })
+    ChamsGroupbox:AddLabel("ColorVisible"):AddColorPicker("ChamsColorVisible", {
+        Default = Color3.fromRGB(0, 200, 0),
+        Title   = "ColorVisible",
+    })
+    ChamsGroupbox:AddSlider("ChamsAlphaVisible", {
+        Text     = "FillTransparencyVisible",
+        Default  = 0.3,
+        Min      = 0,
+        Max      = 1,
         Rounding = 2,
-        Compact = false,
+    })
+    ChamsGroupbox:AddSlider("ChamsOutlineAlphaVisible", {
+        Text     = "OutlineTransparencyVisible",
+        Default  = 0,
+        Min      = 0,
+        Max      = 1,
+        Rounding = 2,
     })
 
-    ChamsGroupbox:AddDropdown("ChamsMaterial", {
-        Values = { "Neon", "Metal", "ForceField" },
-        Default = 1,
-        Multi = false,
-        Text = "Material"
+    ChamsGroupbox:AddDivider()
+
+    -- UNVISIBLE
+    ChamsGroupbox:AddLabel("Unvisible")
+    ChamsGroupbox:AddDropdown("ChamsMaterialUnvisible", {
+        Text    = "MaterialUnvisible",
+        Values  = {"Neon", "Metal", "ForceField", "SmoothPlastic"},
+        Default = "Metal",
+    })
+    ChamsGroupbox:AddLabel("ColorUnvisible"):AddColorPicker("ChamsColorUnvisible", {
+        Default = Color3.fromRGB(200, 0, 0),
+        Title   = "ColorUnvisible",
+    })
+    ChamsGroupbox:AddSlider("ChamsAlphaUnvisible", {
+        Text     = "FillTransparencyUnvisible",
+        Default  = 0.3,
+        Min      = 0,
+        Max      = 1,
+        Rounding = 2,
+    })
+    ChamsGroupbox:AddSlider("ChamsOutlineAlphaUnvisible", {
+        Text     = "OutlineTransparencyUnvisible",
+        Default  = 0,
+        Min      = 0,
+        Max      = 1,
+        Rounding = 2,
     })
 
-    ChamsGroupbox:AddLabel("Color"):AddColorPicker("ChamsColor", {
-        Default = Color3.fromRGB(150, 35, 35),
-        Title = "Chams Color"
-    })
-
-    local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
-    local LocalPlayer = Players.LocalPlayer
+    local Players   = game:GetService("Players")
+    local RunService= game:GetService("RunService")
     local Workspace = game:GetService("Workspace")
+    local LP        = Players.LocalPlayer
 
-    -- Контейнер для подсветки сквозь стены (Wallhack)
     local ESPFolder
     pcall(function()
         ESPFolder = Instance.new("Folder", game:GetService("CoreGui"))
-        ESPFolder.Name = "Chams_Wallhack_Container"
+        ESPFolder.Name = "Chams_Container"
     end)
 
-    local Highlights = {}
+    local Highlights = {}  -- [char] = {visible=Highlight, unvisible=Highlight}
 
-    -- Функция очистки чамсов
-    local function removeChams(player, char)
-        if Highlights[player] then
-            pcall(function() Highlights[player]:Destroy() end)
-            Highlights[player] = nil
+    local function getMaterial(str)
+        if str == "Metal"          then return Enum.Material.Metal
+        elseif str == "ForceField" then return Enum.Material.ForceField
+        elseif str == "SmoothPlastic" then return Enum.Material.SmoothPlastic
+        else return Enum.Material.Neon end
+    end
+
+    local function removeChams(char)
+        if Highlights[char] then
+            pcall(function() Highlights[char].visible:Destroy() end)
+            pcall(function() Highlights[char].unvisible:Destroy() end)
+            Highlights[char] = nil
         end
-
         if not char then return end
         for _, obj in ipairs(char:GetDescendants()) do
             pcall(function()
                 if obj:IsA("BasePart") and obj:GetAttribute("OrigMat") then
                     obj.Material = Enum.Material[obj:GetAttribute("OrigMat")]
-                    obj.Color = obj:GetAttribute("OrigColor") or obj.Color
-                    obj:SetAttribute("OrigMat", nil)
+                    obj.Color    = obj:GetAttribute("OrigColor") or obj.Color
+                    obj:SetAttribute("OrigMat",   nil)
                     obj:SetAttribute("OrigColor", nil)
                 end
             end)
         end
     end
 
+    -- Тим чек через VestDetails
+    -- Если У ТЕБЯ есть VestDetails → ты CT
+    -- Применяй чамсы только на тех у кого нет VestDetails (T)
+    -- и наоборот
+    local function hasVestDetails(char)
+        if not char then return false end
+        local armor = char:FindFirstChild("CharacterArmor")
+        if armor then
+            return armor:FindFirstChild("VestDetails") ~= nil
+        end
+        return false
+    end
+
+    local function isTeammate(char)
+        if not char then return false end
+        local myChar = LP.Character
+        if not myChar then return false end
+        local myHasVest  = hasVestDetails(myChar)
+        local hisHasVest = hasVestDetails(char)
+        -- Союзник = одинаковая сторона (оба с жилетом или оба без)
+        return myHasVest == hisHasVest
+    end
+
+    -- Raycast видимости
+    local RayParams = RaycastParams.new()
+    RayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local function isVisible(char)
+        local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+        if not root then return false end
+        local camPos = Workspace.CurrentCamera.CFrame.Position
+        local dir    = root.Position - camPos
+        RayParams.FilterDescendantsInstances = {LP.Character, char}
+        local result = Workspace:Raycast(camPos, dir, RayParams)
+        return result == nil
+    end
+
     RunService.RenderStepped:Connect(function()
-        local isEnabled = Toggles.ChamsEnabled and Toggles.ChamsEnabled.Value
-        local isTeamCheckActive = Toggles.ChamsTeamCheck and Toggles.ChamsTeamCheck.Value
+        local enabled     = Toggles.ChamsEnabled   and Toggles.ChamsEnabled.Value
+        local teamCheckOn = Toggles.ChamsTeamCheck and Toggles.ChamsTeamCheck.Value
+
+        local matVisible   = getMaterial(Options.ChamsMaterialVisible   and Options.ChamsMaterialVisible.Value   or "Neon")
+        local matUnvisible = getMaterial(Options.ChamsMaterialUnvisible and Options.ChamsMaterialUnvisible.Value or "Metal")
+        local colVisible   = Options.ChamsColorVisible   and Options.ChamsColorVisible.Value   or Color3.fromRGB(0,200,0)
+        local colUnvisible = Options.ChamsColorUnvisible and Options.ChamsColorUnvisible.Value or Color3.fromRGB(200,0,0)
+
+        local fillAlphaVis    = Options.ChamsAlphaVisible         and Options.ChamsAlphaVisible.Value         or 0.3
+        local fillAlphaUnvis  = Options.ChamsAlphaUnvisible       and Options.ChamsAlphaUnvisible.Value       or 0.3
+        local outAlphaVis     = Options.ChamsOutlineAlphaVisible   and Options.ChamsOutlineAlphaVisible.Value   or 0
+        local outAlphaUnvis   = Options.ChamsOutlineAlphaUnvisible and Options.ChamsOutlineAlphaUnvisible.Value or 0
 
         local charactersFolder = Workspace:FindFirstChild("Characters")
         if not charactersFolder then return end
 
-        local matStr = Options.ChamsMaterial and Options.ChamsMaterial.Value or "Neon"
-        local targetMat = Enum.Material.Neon
-        if matStr == "Metal" then
-            targetMat = Enum.Material.Metal
-        elseif matStr == "ForceField" then
-            targetMat = Enum.Material.ForceField
+        -- Собираем все вражеские чары
+        local enemyChars = {}
+        for _, obj in ipairs(charactersFolder:GetDescendants()) do
+            if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+                local char = obj
+                if char == LP.Character then continue end
+                if teamCheckOn and isTeammate(char) then
+                    removeChams(char)
+                    continue
+                end
+                if not enabled then
+                    removeChams(char)
+                    continue
+                end
+                table.insert(enemyChars, char)
+            end
         end
 
-        local targetColor = Options.ChamsColor and Options.ChamsColor.Value or Color3.fromRGB(150, 35, 35)
-        local alpha = Options.ChamsAlpha and Options.ChamsAlpha.Value or 0.3
+        -- Применяем чамсы
+        for _, char in ipairs(enemyChars) do
+            -- Создаём highlights если нет
+            if not Highlights[char] then
+                local hlVis = Instance.new("Highlight")
+                hlVis.DepthMode           = Enum.HighlightDepthMode.Occluded
+                hlVis.Parent              = ESPFolder
 
-        for _, objDesc in ipairs(charactersFolder:GetDescendants()) do
-            if objDesc:IsA("Model") and objDesc:FindFirstChild("HumanoidRootPart") then
-                local char = objDesc
-                local player = Players:GetPlayerFromCharacter(char)
+                local hlUnvis = Instance.new("Highlight")
+                hlUnvis.DepthMode         = Enum.HighlightDepthMode.AlwaysOnTop
+                hlUnvis.Parent            = ESPFolder
 
-                -- 1. Себя не трогаем
-                if player == LocalPlayer or char == LocalPlayer.Character then
-                    removeChams(player, char)
-                    continue
-                end
+                Highlights[char] = { visible = hlVis, unvisible = hlUnvis }
 
-                -- 2. Тим чек
-                local isTeammate = false
-                if isTeamCheckActive then
-                    if player and LocalPlayer.Team and player.Team then
-                        if LocalPlayer.Team == player.Team then
-                            isTeammate = true
-                        end
+                -- Чистим при удалении
+                char.AncestryChanged:Connect(function(_, newParent)
+                    if newParent == nil then removeChams(char) end
+                end)
+            end
+
+            local hl  = Highlights[char]
+            local seen = isVisible(char)
+
+            -- Visible highlight (Occluded — только когда виден)
+            hl.visible.Adornee            = char
+            hl.visible.FillColor          = colVisible
+            hl.visible.OutlineColor       = colVisible
+            hl.visible.FillTransparency   = fillAlphaVis
+            hl.visible.OutlineTransparency= outAlphaVis
+            hl.visible.Enabled            = seen
+
+            -- Unvisible highlight (AlwaysOnTop — сквозь стену)
+            hl.unvisible.Adornee            = char
+            hl.unvisible.FillColor          = colUnvisible
+            hl.unvisible.OutlineColor       = colUnvisible
+            hl.unvisible.FillTransparency   = fillAlphaUnvis
+            hl.unvisible.OutlineTransparency= outAlphaUnvis
+            hl.unvisible.Enabled            = not seen
+
+            -- Материал и цвет частей
+            local targetMat = seen and matVisible or matUnvisible
+            local targetCol = seen and colVisible or colUnvisible
+
+            for _, part in ipairs(char:GetDescendants()) do
+                pcall(function()
+                    if part:IsA("SurfaceAppearance") or part:IsA("Decal") or part:IsA("Texture") then
+                        part:Destroy()
+                    elseif part:IsA("MeshPart") and part.TextureID ~= "" then
+                        part.TextureID = ""
+                    elseif part:IsA("SpecialMesh") and part.TextureId ~= "" then
+                        part.TextureId = ""
                     end
-                    if LocalPlayer.Character and LocalPlayer.Character.Parent and char.Parent then
-                        local myParent = LocalPlayer.Character.Parent.Name
-                        local charParent = char.Parent.Name
-                        if (myParent == "Counter-Terrorists" or myParent == "Terrorists") and myParent == charParent then
-                            isTeammate = true
+                    if part:IsA("BasePart") then
+                        if not part:GetAttribute("OrigMat") then
+                            part:SetAttribute("OrigMat",   part.Material.Name)
+                            part:SetAttribute("OrigColor", part.Color)
                         end
+                        part.Material = targetMat
+                        part.Color    = targetCol
                     end
-                end
-
-                if not isEnabled or isTeammate then
-                    removeChams(player, char)
-                    continue
-                end
-
-                -- 3. Вывод Highlight для врагов
-                if player then
-                    if ESPFolder then
-                        if not Highlights[player] or not Highlights[player].Parent then
-                            local hl = Instance.new("Highlight")
-                            hl.OutlineTransparency = 0
-                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            hl.Parent = ESPFolder
-                            Highlights[player] = hl
-                        end
-                        Highlights[player].Adornee = char
-                        Highlights[player].Enabled = true
-                        Highlights[player].FillColor = targetColor
-                        Highlights[player].OutlineColor = targetColor
-                        Highlights[player].FillTransparency = alpha
-                    end
-                end
-
-                -- 4. УНИЧТОЖЕНИЕ ТЕКСТУР НАМЕРТВО И ПРИНУДИТЕЛЬНАЯ ОКРАСКА 100% ТЕЛА И БРОНИ (CharacterArmor)
-                for _, obj in ipairs(char:GetDescendants()) do
-                    pcall(function()
-                        -- Полностью удаляем из игры всё, что содержит текстуры, картинки или id слоев
-                        if obj:IsA("SurfaceAppearance") or obj:IsA("Decal") or obj:IsA("Texture") then
-                            obj:Destroy()
-                        
-                        -- Очищаем ID текстур у мешей в пустую строку
-                        elseif obj:IsA("MeshPart") then
-                            if obj.TextureID ~= "" then
-                                obj.TextureID = ""
-                            end
-                        elseif obj:IsA("SpecialMesh") then
-                            if obj.TextureId ~= "" then
-                                obj.TextureId = ""
-                            end
-                        end
-
-                        -- Красим абсолютно каждую деталь тела и броню в CharacterArmor
-                        if obj:IsA("BasePart") then
-                            if not obj:GetAttribute("OrigMat") then
-                                obj:SetAttribute("OrigMat", obj.Material.Name)
-                                obj:SetAttribute("OrigColor", obj.Color)
-                            end
-                            obj.Material = targetMat
-                            obj.Color = targetColor
-                        end
-                    end)
-                end
+                end)
             end
         end
     end)
 
     Players.PlayerRemoving:Connect(function(player)
-        if Highlights[player] then
-            Highlights[player]:Destroy()
-            Highlights[player] = nil
-        end
         if player.Character then
-            removeChams(player, player.Character)
+            removeChams(player.Character)
         end
     end)
 end)
